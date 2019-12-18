@@ -1,0 +1,6 @@
+__pycache__
+.venv
+.vscode
+*.so
+am335x-pru*
+gen/firmware*
