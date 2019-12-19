@@ -1,6 +1,6 @@
 __pycache__
 .venv
 .vscode
-*.so
-am335x-pru*
+bbb_pru_adc/resources/*.so
+bbb_pru_adc/resources/*.fw
 gen/firmware*

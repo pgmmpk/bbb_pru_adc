@@ -56,8 +56,8 @@ char payload[RPMSG_BUF_SIZE - RPMSG_BUF_HEADER_SIZE];
 
 /* shared_struct is used to pass data between ARM and PRU */
 typedef struct {
-	uint16_t voltage;
-	uint16_t channel;
+	uint32_t voltage;
+	uint32_t channel;
 	uint32_t cycles[5];
 } message_t;
 

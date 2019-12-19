@@ -73,19 +73,23 @@ volatile register uint32_t __R31;
 #define CM_WKUP_CLKSTCTRL  (*((volatile unsigned int *)0x44E00400))
 #define CM_WKUP_ADC_TSC_CLKCTRL  (*((volatile unsigned int *)0x44E004BC))
 
+#define ADC_AVERAGING 0
+
 /* payload receives RPMsg message */
 #define RPMSG_BUF_HEADER_SIZE           16
 char payload[RPMSG_BUF_SIZE - RPMSG_BUF_HEADER_SIZE];
 
 /* shared_struct is used to pass data between ARM and PRU */
 typedef struct shared_struct{
-	uint16_t voltage;
-	uint16_t channel;
+	uint32_t voltage;
+	uint32_t channel;
 	uint32_t cycles[5];
 } shared_struct;
 
+uint32_t voltage[8];  // here we store captured ADC values (8 channels)
+
 void init_adc();
-uint16_t read_adc(uint16_t adc_chan);
+void read_adc(uint32_t *adc_chan);
 
 void main(void)
 {
@@ -146,12 +150,9 @@ void main(void)
 		 */
 		while (pru_rpmsg_receive(&transport, &src, &dst,
 				payload, &len) == PRU_RPMSG_SUCCESS) {
-
-			/* ARM sends a message using shared_struct */
-			message.channel = ((shared_struct *)payload)->channel;
-
 			for (i = 0; i < 10; i++) {
-				message.voltage = read_adc(message.channel);
+				read_adc(voltage);
+				message.voltage = voltage[2] & 0x0fff;
 				message.cycles[0] = PRU0_CTRL.CYCLE;
 				message.cycles[1] = PRU0_CTRL.CYCLE;
 				message.cycles[2] = PRU0_CTRL.CYCLE;
@@ -186,6 +187,55 @@ void init_adc()
 	 */
 	ADC_TSC.CTRL_bit.ENABLE = 0;
 	ADC_TSC.CTRL_bit.STEPCONFIG_WRITEPROTECT_N_ACTIVE_LOW = 1;
+	ADC_TSC.ADC_CLKDIV_bit.ADC_CLKDIV = 0;  // set to max speed
+
+	/* 
+	 * set the ADC_TSC STEPCONFIG1 register for channel 5  
+	 * Mode = 0; SW enabled, one-shot
+	 * Averaging = 0x3; 8 sample average
+	 * SEL_INP_SWC_3_0 = 0x0 = Channel 1
+	 * use FIFO0
+	 */
+	ADC_TSC.STEPCONFIG1_bit.MODE = 0;
+	ADC_TSC.STEPCONFIG1_bit.AVERAGING = ADC_AVERAGING;
+	ADC_TSC.STEPCONFIG1_bit.SEL_INP_SWC_3_0 = 0;
+	ADC_TSC.STEPCONFIG1_bit.FIFO_SELECT = 0;
+
+	/*
+	 * set the ADC_TSC STEPCONFIG2 register for channel 6
+	 * Mode = 0; SW enabled, one-shot
+	 * Averaging = 0x3; 8 sample average
+	 * SEL_INP_SWC_3_0 = 0x1 = Channel 2
+	 * use FIFO0
+	 */
+	ADC_TSC.STEPCONFIG2_bit.MODE = 0;
+	ADC_TSC.STEPCONFIG2_bit.AVERAGING = ADC_AVERAGING;
+	ADC_TSC.STEPCONFIG2_bit.SEL_INP_SWC_3_0 = 1;
+	ADC_TSC.STEPCONFIG2_bit.FIFO_SELECT = 0;
+
+	/* 
+	 * set the ADC_TSC STEPCONFIG3 register for channel 7
+	 * Mode = 0; SW enabled, one-shot
+	 * Averaging = 0x3; 8 sample average
+	 * SEL_INP_SWC_3_0 = 0x2 = Channel 3
+	 * use FIFO0
+	 */
+	ADC_TSC.STEPCONFIG3_bit.MODE = 0;
+	ADC_TSC.STEPCONFIG3_bit.AVERAGING = ADC_AVERAGING;
+	ADC_TSC.STEPCONFIG3_bit.SEL_INP_SWC_3_0 = 2;
+	ADC_TSC.STEPCONFIG3_bit.FIFO_SELECT = 0;
+
+	/* 
+	 * set the ADC_TSC STEPCONFIG4 register for channel 8
+	 * Mode = 0; SW enabled, one-shot
+	 * Averaging = 0x3; 8 sample average
+	 * SEL_INP_SWC_3_0 = 0x3= Channel 4
+	 * use FIFO0
+	 */
+	ADC_TSC.STEPCONFIG4_bit.MODE = 0;
+	ADC_TSC.STEPCONFIG4_bit.AVERAGING = ADC_AVERAGING;
+	ADC_TSC.STEPCONFIG4_bit.SEL_INP_SWC_3_0 = 3;
+	ADC_TSC.STEPCONFIG4_bit.FIFO_SELECT = 0;
 
 	/* 
 	 * set the ADC_TSC STEPCONFIG1 register for channel 5  
@@ -194,46 +244,46 @@ void init_adc()
 	 * SEL_INP_SWC_3_0 = 0x4 = Channel 5
 	 * use FIFO0
 	 */
-	ADC_TSC.STEPCONFIG1_bit.MODE = 0;
-	ADC_TSC.STEPCONFIG1_bit.AVERAGING = 3;
-	ADC_TSC.STEPCONFIG1_bit.SEL_INP_SWC_3_0 = 4;
-	ADC_TSC.STEPCONFIG1_bit.FIFO_SELECT = 0;
-
-	/*
-	 * set the ADC_TSC STEPCONFIG2 register for channel 6
-	 * Mode = 0; SW enabled, one-shot
-	 * Averaging = 0x3; 8 sample average
-	 * SEL_INP_SWC_3_0 = 0x5 = Channel 6
-	 * use FIFO0
-	 */
-	ADC_TSC.STEPCONFIG2_bit.MODE = 0;
-	ADC_TSC.STEPCONFIG2_bit.AVERAGING = 3;
-	ADC_TSC.STEPCONFIG2_bit.SEL_INP_SWC_3_0 = 5;
-	ADC_TSC.STEPCONFIG2_bit.FIFO_SELECT = 0;
+	ADC_TSC.STEPCONFIG5_bit.MODE = 0;
+	ADC_TSC.STEPCONFIG5_bit.AVERAGING = ADC_AVERAGING;
+	ADC_TSC.STEPCONFIG5_bit.SEL_INP_SWC_3_0 = 4;
+	ADC_TSC.STEPCONFIG5_bit.FIFO_SELECT = 0;
 
 	/* 
-	 * set the ADC_TSC STEPCONFIG3 register for channel 7
+	 * set the ADC_TSC STEPCONFIG1 register for channel 5  
+	 * Mode = 0; SW enabled, one-shot
+	 * Averaging = 0x3; 8 sample average
+	 * SEL_INP_SWC_3_0 = 0x5  = Channel 6
+	 * use FIFO0
+	 */
+	ADC_TSC.STEPCONFIG6_bit.MODE = 0;
+	ADC_TSC.STEPCONFIG6_bit.AVERAGING = ADC_AVERAGING;
+	ADC_TSC.STEPCONFIG6_bit.SEL_INP_SWC_3_0 = 5;
+	ADC_TSC.STEPCONFIG6_bit.FIFO_SELECT = 0;
+
+	/* 
+	 * set the ADC_TSC STEPCONFIG1 register for channel 5  
 	 * Mode = 0; SW enabled, one-shot
 	 * Averaging = 0x3; 8 sample average
 	 * SEL_INP_SWC_3_0 = 0x6 = Channel 7
 	 * use FIFO0
 	 */
-	ADC_TSC.STEPCONFIG3_bit.MODE = 0;
-	ADC_TSC.STEPCONFIG3_bit.AVERAGING = 3;
-	ADC_TSC.STEPCONFIG3_bit.SEL_INP_SWC_3_0 = 6;
-	ADC_TSC.STEPCONFIG3_bit.FIFO_SELECT = 0;
+	ADC_TSC.STEPCONFIG7_bit.MODE = 0;
+	ADC_TSC.STEPCONFIG7_bit.AVERAGING = ADC_AVERAGING;
+	ADC_TSC.STEPCONFIG7_bit.SEL_INP_SWC_3_0 = 6;
+	ADC_TSC.STEPCONFIG7_bit.FIFO_SELECT = 0;
 
 	/* 
-	 * set the ADC_TSC STEPCONFIG4 register for channel 8
+	 * set the ADC_TSC STEPCONFIG1 register for channel 5  
 	 * Mode = 0; SW enabled, one-shot
 	 * Averaging = 0x3; 8 sample average
-	 * SEL_INP_SWC_3_0 = 0x7= Channel 8
+	 * SEL_INP_SWC_3_0 = 0x7 = Channel 8
 	 * use FIFO0
 	 */
-	ADC_TSC.STEPCONFIG4_bit.MODE = 0;
-	ADC_TSC.STEPCONFIG4_bit.AVERAGING = 3;
-	ADC_TSC.STEPCONFIG4_bit.SEL_INP_SWC_3_0 = 7;
-	ADC_TSC.STEPCONFIG4_bit.FIFO_SELECT = 0;
+	ADC_TSC.STEPCONFIG8_bit.MODE = 0;
+	ADC_TSC.STEPCONFIG8_bit.AVERAGING = ADC_AVERAGING;
+	ADC_TSC.STEPCONFIG8_bit.SEL_INP_SWC_3_0 = 7;
+	ADC_TSC.STEPCONFIG8_bit.FIFO_SELECT = 0;
 
 	/* 
 	 * set the ADC_TSC CTRL register
@@ -246,7 +296,7 @@ void init_adc()
 	ADC_TSC.CTRL_bit.ENABLE = 1;
 }
 
-uint16_t read_adc(uint16_t adc_chan)
+void read_adc(uint32_t *voltage)
 {
 	/* 
 	 * Clear FIFO0 by reading from it
@@ -260,25 +310,31 @@ uint16_t read_adc(uint16_t adc_chan)
 		data = ADC_TSC.FIFO0DATA;
 	}
 
-	/* read from the specified ADC channel */
-	switch (adc_chan) {
-		case 5 :
-			ADC_TSC.STEPENABLE_bit.STEP1 = 1;
-		case 6 :
-			ADC_TSC.STEPENABLE_bit.STEP2 = 1;
-		case 7 :
-			ADC_TSC.STEPENABLE_bit.STEP3 = 1;
-		case 8 :
-			ADC_TSC.STEPENABLE_bit.STEP4 = 1;
-		default :
-			/* 
-			 * this error condition should not occur because of
-			 * checks in userspace code
-			 */
-			ADC_TSC.STEPENABLE_bit.STEP1 = 1;
-	}
+	// /* read from the specified ADC channel */
+	// switch (adc_chan) {
+	// 	case 5 :
+	// 		ADC_TSC.STEPENABLE_bit.STEP1 = 1;
+	// 		break;
+	// 	case 6 :
+	// 		ADC_TSC.STEPENABLE_bit.STEP2 = 1;
+	// 		break;
+	// 	case 7 :
+	// 		ADC_TSC.STEPENABLE_bit.STEP3 = 1;
+	// 		break;
+	// 	case 8 :
+	// 		ADC_TSC.STEPENABLE_bit.STEP4 = 1;
+	// 		break;
+	// 	default :
+	// 		/* 
+	// 		 * this error condition should not occur because of
+	// 		 * checks in userspace code
+	// 		 */
+	// 		ADC_TSC.STEPENABLE_bit.STEP1 = 1;
+	// }
+	// ADC_TSC.STEPENABLE_bit.STEP1 = 1;
+	ADC_TSC.STEPENABLE = 0x1fe;  // enable all 8 capture channels
 
-	while (ADC_TSC.FIFO0COUNT == 0) {
+	while (ADC_TSC.FIFO0COUNT < 8) {
 		/*
 		 * loop until value placed in fifo.
 		 * Optional: implement timeout logic.
@@ -293,7 +349,12 @@ uint16_t read_adc(uint16_t adc_chan)
 	}
 
 	/* read the voltage */
-	uint16_t voltage = ADC_TSC.FIFO0DATA_bit.ADCDATA;
-
-	return voltage;
+	voltage[0] = ADC_TSC.FIFO0DATA;
+	voltage[1] = ADC_TSC.FIFO0DATA;
+	voltage[2] = ADC_TSC.FIFO0DATA;
+	voltage[3] = ADC_TSC.FIFO0DATA;
+	voltage[4] = ADC_TSC.FIFO0DATA;
+	voltage[5] = ADC_TSC.FIFO0DATA;
+	voltage[6] = ADC_TSC.FIFO0DATA;
+	voltage[7] = ADC_TSC.FIFO0DATA;
 }

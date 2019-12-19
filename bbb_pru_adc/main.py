@@ -14,5 +14,5 @@ if __name__ == '__main__':
     with _driver_pru(auto_install=True):
         d = c_double()
         for _ in range(10):
-            result = _driver_arm.readVoltage(c_int(5), byref(d))
+            result = _driver_arm.readVoltage(c_int(7), byref(d))
             print(result, d)
