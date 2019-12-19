@@ -12,9 +12,7 @@ git clone <this repo>
 cd <dir>
 make clean
 make
-python3 -m venv .venv
-. .venv/bin/activate
-python main.py
+python3 -m bbb_pru_adc.main
 ```
 
 ## Links
