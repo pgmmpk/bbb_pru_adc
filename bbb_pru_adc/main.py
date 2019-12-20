@@ -18,6 +18,6 @@ if __name__ == '__main__':
                 break
 
     elapsed = time.time() - start
-    for x in data[:10]:
-        print(x)
+    for timestamp, *x in data[:10]:
+        print(timestamp, x)
     print('Elapsed:', elapsed)
