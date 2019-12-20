@@ -407,24 +407,4 @@ void main(void) {
 			}
 		}
 	}
-
-	// int count = 0;
-	// PRU0_CTRL.CYCLE = 0;
-	// command.min_cycles = PRU0_CTRL.CYCLE;
-	// while (count < 1000) {
-	// 	uint16_t len = io_send(pio, &command, sizeof(command));
-	// 	if (len == sizeof(command)) {
-	// 		count += 1;
-	// 		command.magic = count;
-	// 		command.min_cycles = PRU0_CTRL.CYCLE;
-	// 		PRU0_CTRL.CYCLE = 0;
-	// 		__delay_cycles(100000);
-	// 	}
-	// }
-
-	// __halt();
-
-	// PRU0_CTRL.CYCLE = 0;
-	// uint32_t time = PRU0_CTRL.CYCLE;
 }
-
