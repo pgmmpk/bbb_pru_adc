@@ -16,10 +16,10 @@ LFLAGS=--reread_libs --warn_sections --stack_size=$(STACK_SIZE) --heap_size=$(HE
 
 all: $(DRIVER) $(FIRMWARE)
 
-$(DRIVER): src/driver.c src/driver.h
+$(DRIVER): src/driver.c src/driver.h src/common.h
 	gcc -O3 -Wall -Werror -fpic -shared -o $(DRIVER) src/driver.c
 
-$(FIRMWARE): src/firmware.c src/firmware.cmd src/firmware_resource_table.h
+$(FIRMWARE): src/firmware.c src/firmware.cmd src/firmware_resource_table.h src/common.h
 	/usr/bin/clpru $(INCLUDE) $(CFLAGS) -fe gen/firmware.object src/firmware.c
 	/usr/bin/clpru $(CFLAGS) -z -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $(FIRMWARE) gen/firmware.object -mgen/firmware.map src/firmware.cmd --library=libc.a $(LIBS)
 

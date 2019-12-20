@@ -45,6 +45,7 @@
 #include <inttypes.h>
 #include <unistd.h>
 #include <errno.h>
+#include "common.h"
 
 
 #define MAX_BUFFER_SIZE			512
@@ -52,79 +53,90 @@
 #ifndef RPMSG_BUF_SIZE
 #define RPMSG_BUF_SIZE 512 
 #endif
-char payload[RPMSG_BUF_SIZE - RPMSG_BUF_HEADER_SIZE];
 
-/* shared_struct is used to pass data between ARM and PRU */
 typedef struct {
-	uint32_t voltage;
-	uint32_t channel;
-	uint32_t cycles[5];
-} message_t;
+	driver_t pub;
+	int dev;
+	char buffer[MAX_BUFFER_SIZE];
+	int offset;
+	int num_channels;
+} driver_impl_t;
 
+driver_t *driver_start(unsigned int num_channels, unsigned char const *channels) {
+	static driver_impl_t driver;
+	command_start_t command;
 
-int readVoltage(int channel, double *out)
-{
-
-	message_t message;
-
-	if (channel == 5 || channel == 6 || channel == 7) {} else {
-		fprintf(stderr, "bad channel, expect: 5, 6, or 7\n");
-		return -1;
-	}
-
-	/* use character device /dev/rpmsg_pru30 */
-	/* open the character device for read/write */
-	struct pollfd pfds[1];
-	pfds[0].fd = open("/dev/rpmsg_pru30", O_RDWR);
-	if (pfds[0].fd < 0) {
+	memset(&driver, '\0', sizeof(driver));
+	driver.num_channels = num_channels;
+	driver.offset = -1;  // not read
+	driver.dev = open("/dev/rpmsg_pru30", O_RDWR); // | O_NONBLOCK);
+	if (driver.dev < 0) {
 		fprintf(stderr, "could not open /dev/rpmsg_pru30\n");
-		return -1;  // error
+		return NULL;  // error
 	}
 
-	/* Convert channel number from CHAR to uint16_t */
-	message.channel = (uint16_t) channel;
+	memset(&command, '\0', sizeof(command_t));
+	command.header.magic = COMMAND_MAGIC;
+	command.header.command = COMMAND_START;
+	command.num_channels = num_channels;
+	for (int i = 0; i < num_channels; i++) {
+		command.channels[i] = channels[i];
+	}
 
 	/* write data to the payload[] buffer in the PRU firmware. */
-	size_t result = write(pfds[0].fd, &message, sizeof(message));
-	if (result != sizeof(message)) {
+	size_t result = write(driver.dev, &command, sizeof(command));
+	if (result != sizeof(command)) {
 		fprintf(stderr, "write failed\n");
-		close(pfds[0].fd);
-		return -2;
+		close(driver.dev);
+		return NULL;
 	}
 
-	/* poll for the received message */
-	pfds[0].events = POLLIN | POLLRDNORM;
-	int pollResult = 0;
+	return &driver.pub;
+}
 
-	/* loop while rpmsg_pru_poll says there are no kfifo messages. */
-	while (pollResult <= 0) {
-		pollResult = poll(pfds,1,0);
+int driver_read(driver_t *drv, reading_t *out) {
+	driver_impl_t *pdriver = (driver_impl_t *) drv;
+	buffer_t *buff = (buffer_t *) pdriver->buffer;
 
-		/* 
-		 * users may prefer to write code that does not block the ARM
-		 * core from addressing other tasks, and that contains timeout
-		 * logic to avoid an infinite lockup.
-		 */
-	}
+	if (buff->num == 0) {
+		int result;
 
-	/* read voltage and channel back */
-	double voltage[10];
-	for (int i = 0; i < 10; i++) {
-		result = read(pfds[0].fd, payload, MAX_BUFFER_SIZE);
-		if (result != sizeof(message_t)) {
-			fprintf(stderr, "read failed\n");
-			close(pfds[0].fd);
-			return -3;
-		}	
-		fprintf(stderr, "voltage[%i]=%x\n", i, ((message_t *)payload)->voltage);
-		for (int j = 0; j < 5; j++) {
-			fprintf(stderr, "\t%x\n", ((message_t *)payload)->cycles[j]);
+		if (pdriver->dev < 0) {
+			fprintf(stderr, "attempt to read from closed device\n");
+			return -1;
 		}
-		voltage[i] = (double) ((message_t *)payload)->voltage; 
-	}
-	close(pfds[0].fd);
 
-	*out = voltage[0] * 1.8 / 4095.0;
+		result = read(pdriver->dev, pdriver->buffer, MAX_BUFFER_SIZE);
+		if (result < 0) {
+			fprintf(stderr, "read failed\n");
+			return -1;
+		}
+
+		pdriver->offset = 0;
+	}
+
+	memcpy(out, &buff->data[pdriver->offset], 4 + 2 * pdriver->num_channels);
+	pdriver->offset += 2 + pdriver->num_channels;
+	buff->num -= 1;
+
+	return 0;
+}
+
+int driver_stop(driver_t *drv) {
+	driver_impl_t *pdriver = (driver_impl_t *) drv;
+	command_t command;
+
+	if (pdriver->dev < 0) return 0;  // nothing to do
+
+	command.magic = COMMAND_MAGIC;
+	command.command = COMMAND_STOP;
+
+	/* write data to the payload[] buffer in the PRU firmware. */
+	write(pdriver->dev, &command, sizeof(command));
+
+	close(pdriver->dev);
+
+	pdriver->dev = -1;
 
 	return 0;
 }

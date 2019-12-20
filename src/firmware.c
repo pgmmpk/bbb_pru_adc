@@ -77,45 +77,16 @@ volatile register uint32_t __R31;
 
 /* payload receives RPMsg message */
 #define RPMSG_BUF_HEADER_SIZE           16
-char payload[RPMSG_BUF_SIZE - RPMSG_BUF_HEADER_SIZE];
+#define MAX_SIZE (RPMSG_BUF_SIZE - RPMSG_BUF_HEADER_SIZE)
 
-/* shared_struct is used to pass data between ARM and PRU */
-typedef struct shared_struct{
-	uint32_t voltage;
-	uint32_t channel;
-	uint32_t cycles[5];
-} shared_struct;
-
-uint32_t voltage[8];  // here we store captured ADC values (8 channels)
-
-void init_adc();
-void read_adc(uint32_t *adc_chan);
-
-void main(void)
-{
+typedef struct {
 	struct pru_rpmsg_transport transport;
-	uint16_t src, dst, len, i;
+	uint16_t src, dst;
+} io_t;
+
+io_t *io_open() {
+	static io_t io;
 	volatile uint8_t *status;
-	struct shared_struct message;
-
-	/* 
-	 * Allow OCP master port access by the PRU so the PRU can read 
-	 * external memories 
-	 */
-	CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
-
-	/*
-	 * Enable cycle tick register
-	 */
-  	PRU0_CTRL.CTRL_bit.CTR_EN = 1; //turn on cycle counter
-
-	init_adc();
-
-	/* 
-	 * Clear the status of the PRU-ICSS system event that the ARM will 
-	 * use to 'kick' us
-	 */
-	CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
 
 	/* Make sure the Linux drivers are ready for RPMsg communication */
 	status = &resourceTable.rpmsg_vdev.status;
@@ -123,55 +94,72 @@ void main(void)
 		/* Optional: implement timeout logic */
 	};
 
-	/* Initialize the RPMsg transport structure */
-	pru_rpmsg_init(&transport, &resourceTable.rpmsg_vring0,
+	pru_rpmsg_init(&io.transport, &resourceTable.rpmsg_vring0,
 		&resourceTable.rpmsg_vring1, TO_ARM_HOST, FROM_ARM_HOST);
 
 	/* 
 	 * Create the RPMsg channel between the PRU and ARM user space using 
 	 * the transport structure. 
 	 */
-	while (pru_rpmsg_channel(RPMSG_NS_CREATE, &transport, CHAN_NAME,
+	while (pru_rpmsg_channel(RPMSG_NS_CREATE, &io.transport, CHAN_NAME,
 			CHAN_DESC, CHAN_PORT) != PRU_RPMSG_SUCCESS) {
 		/* Optional: implement timeout logic */
 	};
 
-	while (1) {
-		/* Check register R31 bit 30 to see if the ARM has kicked us */
-		if (!(__R31 & HOST_INT))
-			continue;
+	/* Clear the event status */
+	CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
 
-		/* Clear the event status */
-		CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
-
-		/* 
-		 * Receive available messages.
-		 * Multiple messages can be sent per kick. 
-		 */
-		while (pru_rpmsg_receive(&transport, &src, &dst,
-				payload, &len) == PRU_RPMSG_SUCCESS) {
-			for (i = 0; i < 10; i++) {
-				read_adc(voltage);
-				message.voltage = voltage[2] & 0x0fff;
-				message.cycles[0] = PRU0_CTRL.CYCLE;
-				message.cycles[1] = PRU0_CTRL.CYCLE;
-				message.cycles[2] = PRU0_CTRL.CYCLE;
-				message.cycles[3] = PRU0_CTRL.CYCLE;
-				message.cycles[3] = 0xffffff;
-
-				/*
-				* Send reply message to the address that sent
-				* the initial message
-				*/
-				pru_rpmsg_send(&transport, dst, src, &message,
-					sizeof(message));
-			}
-		}
-	}
+	return &io;
 }
 
-void init_adc()
-{
+uint16_t io_recv(io_t *pio, void *buffer) {
+	static int state = 0;
+	uint16_t len;
+
+	switch(state) {
+	case 0:  // waiting to be kicked
+		if (__R31 & HOST_INT) {
+			state = 1;
+			CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
+		}
+		return 0;
+	case 1:  // reading
+		if (pru_rpmsg_receive(&pio->transport, &pio->src, &pio->dst,
+				buffer, &len) == PRU_RPMSG_SUCCESS) {
+			return len;
+		} else {
+			// nothing more to read
+			state = 0;
+			return 0;
+		}
+	}
+	return 0; // not reachable, makes compiler happy though
+}
+
+uint16_t io_send(io_t *pio, void *payload, uint16_t len) {
+	if (len > 0 && pru_rpmsg_send(&pio->transport, pio->dst, pio->src, payload, len) == PRU_RPMSG_SUCCESS) {
+		return len;
+	}
+	return 0;
+}
+
+typedef struct {
+	uint16_t num_channels;
+	uint16_t index[8]; 
+	uint16_t value[9];   // extra value is used as a dump
+} adc_t;
+
+adc_t *adc_open(uint16_t num_channels, uint8_t *channels) {
+	static adc_t adc;
+	uint16_t i;
+
+	adc.num_channels = num_channels;
+	for (i = 0; i < 8; i++) {
+		adc.index[i] = 8;  // point to the dump
+	}
+	for (i = 0; i < num_channels; i++) {
+		adc.index[channels[i]] = i;
+	}
 
 	/* set the always on clock domain to NO_SLEEP. Enable ADC_TSC clock */
 	while (!(CM_WKUP_ADC_TSC_CLKCTRL == 0x02)) {
@@ -294,67 +282,149 @@ void init_adc()
 	ADC_TSC.CTRL_bit.STEPCONFIG_WRITEPROTECT_N_ACTIVE_LOW = 0;
 	ADC_TSC.CTRL_bit.STEP_ID_TAG = 1;
 	ADC_TSC.CTRL_bit.ENABLE = 1;
+
+	return &adc;
 }
 
-void read_adc(uint32_t *voltage)
-{
-	/* 
-	 * Clear FIFO0 by reading from it
-	 * We are using single-shot mode. 
-	 * It should not usually enter the for loop
-	 */
+uint16_t adc_read(adc_t *padc, uint16_t *values) {
+	static int state = 0;
 	uint32_t count = ADC_TSC.FIFO0COUNT;
 	uint32_t data;
-	uint32_t i;
-	for (i = 0; i < count; i++) {
-		data = ADC_TSC.FIFO0DATA;
+	uint16_t channel;
+	uint16_t i;
+
+	switch (state) {
+	case 0:	// prepare
+		/* 
+		* Clear FIFO0 by reading from it
+		* We are using single-shot mode. 
+		* It should not usually enter the for loop
+		*/
+		for (i = 0; i < count; i++) {
+			data = ADC_TSC.FIFO0DATA;
+		}
+		state = 1;
+		return 0;
+	
+	case 1: // trigger the capture
+		ADC_TSC.STEPENABLE = 0x1fe;  // enable all 8 capture channels
+		state = 2;
+		return 0;
+	
+	case 2: // wait for fifo0 to populate
+
+		if (ADC_TSC.FIFO0COUNT < 8) {
+			return 0;
+		}
+
+		state = 3;
+		return 0;
+
+	case 3:  // all 8 channels are ready in fifo0
+		for (i = 0; i < 8; i++) {
+			data = ADC_TSC.FIFO0DATA;
+			channel = (data >> 16) & 0xf;
+			padc->value[padc->index[channel]] = data & 0xfff;
+		}
+		memcpy(values, padc->value, padc->num_channels * sizeof(uint16_t));
+		state = 0;
+		return padc->num_channels;
 	}
 
-	// /* read from the specified ADC channel */
-	// switch (adc_chan) {
-	// 	case 5 :
-	// 		ADC_TSC.STEPENABLE_bit.STEP1 = 1;
-	// 		break;
-	// 	case 6 :
-	// 		ADC_TSC.STEPENABLE_bit.STEP2 = 1;
-	// 		break;
-	// 	case 7 :
-	// 		ADC_TSC.STEPENABLE_bit.STEP3 = 1;
-	// 		break;
-	// 	case 8 :
-	// 		ADC_TSC.STEPENABLE_bit.STEP4 = 1;
-	// 		break;
-	// 	default :
-	// 		/* 
-	// 		 * this error condition should not occur because of
-	// 		 * checks in userspace code
-	// 		 */
-	// 		ADC_TSC.STEPENABLE_bit.STEP1 = 1;
-	// }
-	// ADC_TSC.STEPENABLE_bit.STEP1 = 1;
-	ADC_TSC.STEPENABLE = 0x1fe;  // enable all 8 capture channels
-
-	while (ADC_TSC.FIFO0COUNT < 8) {
-		/*
-		 * loop until value placed in fifo.
-		 * Optional: implement timeout logic.
-		 *
-		 * Other potential options include: 
-		 *   - configure PRU to receive an ADC interrupt. Note that 
-		 *     END_OF_SEQUENCE does not mean that the value has been
-		 *     loaded into the FIFO yet
-		 *   - perform other actions, and periodically poll for 
-		 *     FIFO0COUNT > 0
-		 */
-	}
-
-	/* read the voltage */
-	voltage[0] = ADC_TSC.FIFO0DATA;
-	voltage[1] = ADC_TSC.FIFO0DATA;
-	voltage[2] = ADC_TSC.FIFO0DATA;
-	voltage[3] = ADC_TSC.FIFO0DATA;
-	voltage[4] = ADC_TSC.FIFO0DATA;
-	voltage[5] = ADC_TSC.FIFO0DATA;
-	voltage[6] = ADC_TSC.FIFO0DATA;
-	voltage[7] = ADC_TSC.FIFO0DATA;
+	return 0;
 }
+
+uint8_t recv_buffer[MAX_SIZE];
+uint8_t send_buffer[MAX_SIZE];
+
+void send_to_buffer(io_t *pio, uint32_t cycles, uint16_t *values, uint16_t num_channels) {
+	static int current = 0;
+	int size;
+
+	buffer_t *b = (buffer_t *) send_buffer;
+	if (current == 0) b->num = 0;
+	memcpy(&b->data[current], &cycles, sizeof(uint32_t));
+	current += 2;
+	memcpy(&b->data[current], values, sizeof(uint16_t) * num_channels);
+	current += num_channels;
+	b->num += 1;
+
+	size = ((uint8_t *) &b->data[current]) - ((uint8_t *) send_buffer);
+	if (size + sizeof(uint16_t) * (2 + num_channels)  > MAX_SIZE) {
+		// next measurement will not fit here, have to send!
+		if (io_send(pio, send_buffer, size) != size) {
+			// have to drop!
+			b->num_dropped += 1;
+			b->num -= 1;
+			current -= num_channels + 2;
+		} else {
+			// all good, sent out!
+			current = 0;
+		}
+	}
+}
+
+
+void main(void) {
+	io_t *pio;
+	adc_t *padc = NULL;
+	command_t *cmd = (command_t *) recv_buffer;
+
+	/* 
+	 * Allow OCP master port access by the PRU so the PRU can read 
+	 * external memories 
+	 */
+	CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
+
+	/*
+	 * Enable cycle tick register
+	 */
+  	PRU0_CTRL.CTRL_bit.CTR_EN = 1; // turn on cycle counter
+
+	pio = io_open();
+
+	while (1) {
+		uint16_t len = io_recv(pio, recv_buffer);
+		if (len >= sizeof(command_t) && cmd->magic == COMMAND_MAGIC) {
+			if (padc == NULL && cmd->command == COMMAND_START) {
+				command_start_t *start = (command_start_t *) recv_buffer;
+				padc = adc_open(start->num_channels, start->channels);
+				PRU0_CTRL.CYCLE = 0;
+			} else if (padc != NULL && cmd->command == COMMAND_STOP) {
+				padc = NULL;
+			}
+		}
+
+		if (padc != NULL) {
+			uint16_t values[8];
+			uint16_t len = adc_read(padc, values);
+			if (len > 0) {
+				// assert (len == padc->num_channels);
+				uint32_t cycles = PRU0_CTRL.CYCLE;
+				PRU0_CTRL.CYCLE = 0;
+				send_to_buffer(pio, cycles, values, len);
+				__delay_cycles(20000); // trying to add stability (avoid kernel lock ups)
+			}
+		}
+	}
+
+	// int count = 0;
+	// PRU0_CTRL.CYCLE = 0;
+	// command.min_cycles = PRU0_CTRL.CYCLE;
+	// while (count < 1000) {
+	// 	uint16_t len = io_send(pio, &command, sizeof(command));
+	// 	if (len == sizeof(command)) {
+	// 		count += 1;
+	// 		command.magic = count;
+	// 		command.min_cycles = PRU0_CTRL.CYCLE;
+	// 		PRU0_CTRL.CYCLE = 0;
+	// 		__delay_cycles(100000);
+	// 	}
+	// }
+
+	// __halt();
+
+	// PRU0_CTRL.CYCLE = 0;
+	// uint32_t time = PRU0_CTRL.CYCLE;
+}
+

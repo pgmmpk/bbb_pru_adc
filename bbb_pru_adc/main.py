@@ -1,18 +1,23 @@
-from ctypes import CDLL, c_int, c_double, byref
 import logging
 import time
-from bbb_pru_adc.driver import Driver, relative
-
-_driver_arm = CDLL(relative('resources/libdriver.so'))
-_driver_arm.readVoltage.restype = c_int
-
-_driver_pru = Driver(fw0=relative('resources/am335x-pru0.fw'))
+from bbb_pru_adc.capture import capture
 
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
-    with _driver_pru(auto_install=True):
-        d = c_double()
-        for _ in range(10):
-            result = _driver_arm.readVoltage(c_int(7), byref(d))
-            print(result, d)
+
+    data = []
+
+    start = time.time()
+    with capture([5, 6, 7], auto_install=True) as cap:
+        counter = 0
+        for x in cap:
+            data.append(x)
+            counter += 1
+            if counter > 10000:
+                break
+
+    elapsed = time.time() - start
+    for x in data[:10]:
+        print(x)
+    print('Elapsed:', elapsed)
