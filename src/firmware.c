@@ -82,6 +82,7 @@ volatile register uint32_t __R31;
 typedef struct {
 	struct pru_rpmsg_transport transport;
 	uint16_t src, dst;
+	uint16_t acked;
 } io_t;
 
 io_t *io_open() {
@@ -108,6 +109,8 @@ io_t *io_open() {
 
 	/* Clear the event status */
 	CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
+
+	io.acked = 1;
 
 	return &io;
 }
@@ -335,31 +338,70 @@ uint16_t adc_read(adc_t *padc, uint16_t *values) {
 }
 
 uint8_t recv_buffer[MAX_SIZE];
-uint8_t send_buffer[MAX_SIZE];
 
-void send_to_buffer(io_t *pio, uint32_t cycles, uint16_t *values, uint16_t num_channels) {
-	static int current = 0;
+typedef struct {
+#define RING_SIZE_LOG 0
+#define RING_SIZE (1 << RING_SIZE_LOG)
+#define RING_SIZE_MASK (RING_SIZE - 1)
+	uint8_t rings[RING_SIZE][MAX_SIZE];
+	uint16_t head;  // id of current buffer
+	uint16_t num_free;
+} ring_t;
+
+
+void *ring_get_buffer(ring_t *ring) {
+	void *p = (void *) ring->rings[ring->head];
+	if (ring->num_free == 0) return NULL;
+	ring->head = (ring->head + 1) & RING_SIZE_MASK;
+	ring->num_free -= 1;
+	return p;
+}
+
+void ring_release_buffer(ring_t *ring) {
+	ring->num_free += 1;
+}
+
+ring_t *ring_open() {
+	static ring_t r;
+	r.head = 0;
+	r.num_free = RING_SIZE;
+	return &r;
+}
+
+void send_to_buffer(io_t *pio, ring_t *ring,
+		uint32_t cycles, uint16_t *values, uint16_t num_channels) {
+	static int offset = 0;
+	static int dropped = 0;
+	static buffer_t *b = NULL;
 	int size;
 
-	buffer_t *b = (buffer_t *) send_buffer;
-	if (current == 0) b->num = 0;
-	memcpy(&b->data[current], &cycles, sizeof(uint32_t));
-	current += 2;
-	memcpy(&b->data[current], values, sizeof(uint16_t) * num_channels);
-	current += num_channels;
+	if (b == NULL) {
+		b = (buffer_t *) ring_get_buffer(ring);
+		if (b == NULL) {
+			// no more buffers!
+			dropped += 1;
+			return;
+		}
+		offset = 0;
+		b->num = 0;
+		b->num_dropped = dropped > 0xffff ? 0xffff : dropped;
+		dropped = 0;
+	}
+
+	memcpy(&b->data[offset], &cycles, sizeof(uint32_t)); offset += 2;
+	memcpy(&b->data[offset], values, sizeof(uint16_t) * num_channels); offset += num_channels;
 	b->num += 1;
 
-	size = ((uint8_t *) &b->data[current]) - ((uint8_t *) send_buffer);
+	size = ((uint8_t *) &b->data[offset]) - ((uint8_t *) b);
 	if (size + sizeof(uint16_t) * (2 + num_channels)  > MAX_SIZE) {
 		// next measurement will not fit here, have to send!
-		if (io_send(pio, send_buffer, size) != size) {
-			// have to drop!
-			b->num_dropped += 1;
-			b->num -= 1;
-			current -= num_channels + 2;
+		if (io_send(pio, b, size) != size) {
+			dropped = b->num + b->num_dropped;
+			b->num_dropped = 0;
+			b->num = 0;
+			offset = 0;
 		} else {
-			// all good, sent out!
-			current = 0;
+			b = NULL;
 		}
 	}
 }
@@ -367,6 +409,7 @@ void send_to_buffer(io_t *pio, uint32_t cycles, uint16_t *values, uint16_t num_c
 
 void main(void) {
 	io_t *pio;
+	ring_t *ring;
 	adc_t *padc = NULL;
 	command_t *cmd = (command_t *) recv_buffer;
 
@@ -382,6 +425,7 @@ void main(void) {
   	PRU0_CTRL.CTRL_bit.CTR_EN = 1; // turn on cycle counter
 
 	pio = io_open();
+	ring = ring_open();
 
 	while (1) {
 		uint16_t len = io_recv(pio, recv_buffer);
@@ -390,6 +434,8 @@ void main(void) {
 				command_start_t *start = (command_start_t *) recv_buffer;
 				padc = adc_open(start->num_channels, start->channels);
 				PRU0_CTRL.CYCLE = 0;
+			} else if (padc != NULL && cmd->command == COMMAND_ACK) {
+				ring_release_buffer(ring);  // CPU acknowledged receiving data buffer
 			} else if (padc != NULL && cmd->command == COMMAND_STOP) {
 				padc = NULL;
 			}
@@ -402,8 +448,8 @@ void main(void) {
 				// assert (len == padc->num_channels);
 				uint32_t cycles = PRU0_CTRL.CYCLE;
 				PRU0_CTRL.CYCLE = 0;
-				send_to_buffer(pio, cycles, values, len);
-				__delay_cycles(20000); // trying to add stability (avoid kernel lock ups)
+				send_to_buffer(pio, ring, cycles, values, len);
+				//__delay_cycles(10000); // trying to add stability (avoid kernel lock ups)
 			}
 		}
 	}

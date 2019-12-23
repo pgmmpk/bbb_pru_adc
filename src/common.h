@@ -8,7 +8,8 @@ typedef struct {
     uint16_t magic;        // magic number to protect against garbage data
 #define COMMAND_MAGIC 0xbeef
     uint16_t command;
-#define COMMAND_STOP (1)
+#define COMMAND_STOP (2)
+#define COMMAND_ACK (3)
 #define COMMAND_START (1)
 } command_t;
 
