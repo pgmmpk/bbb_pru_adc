@@ -48,27 +48,34 @@
 #include "common.h"
 
 
-#define MAX_BUFFER_SIZE			512
 #define RPMSG_BUF_HEADER_SIZE           16
 #ifndef RPMSG_BUF_SIZE
 #define RPMSG_BUF_SIZE 512 
 #endif
 
+#define MAX_BUFFER_SIZE			512
+
+int driver_num_records(unsigned int num_channels) {
+    return (512 - 16 - 4) / (4 + 2 * num_channels);
+}
+
+
 typedef struct {
 	driver_t pub;
 	int dev;
-	char buffer[MAX_BUFFER_SIZE];
-	int offset;
+	unsigned short buffer[MAX_BUFFER_SIZE/sizeof(unsigned short)];
 	int num_channels;
+	int num_records;
 } driver_impl_t;
 
-driver_t *driver_start(unsigned int num_channels, unsigned char const *channels) {
+
+driver_t *driver_start(unsigned int speed, unsigned int num_channels, unsigned char const *channels) {
 	static driver_impl_t driver;
 	command_start_t command;
 
 	memset(&driver, '\0', sizeof(driver));
 	driver.num_channels = num_channels;
-	driver.offset = -1;  // not read
+	driver.num_records = driver_num_records(num_channels);
 	driver.dev = open("/dev/rpmsg_pru30", O_RDWR); // | O_NONBLOCK);
 	if (driver.dev < 0) {
 		fprintf(stderr, "could not open /dev/rpmsg_pru30\n");
@@ -78,6 +85,7 @@ driver_t *driver_start(unsigned int num_channels, unsigned char const *channels)
 	memset(&command, '\0', sizeof(command_t));
 	command.header.magic = COMMAND_MAGIC;
 	command.header.command = COMMAND_START;
+	command.speed = speed;
 	command.num_channels = num_channels;
 	for (int i = 0; i < num_channels; i++) {
 		command.channels[i] = channels[i];
@@ -94,30 +102,41 @@ driver_t *driver_start(unsigned int num_channels, unsigned char const *channels)
 	return &driver.pub;
 }
 
-int driver_read(driver_t *drv, reading_t *out) {
+int driver_read(driver_t *drv, int *dropped, unsigned int *timestamps, float *values) {
 	driver_impl_t *pdriver = (driver_impl_t *) drv;
-	buffer_t *buff = (buffer_t *) pdriver->buffer;
+	int result;
+	command_t command;
+	unsigned short *p;
 
-	if (buff->num == 0) {
-		int result;
+	command.magic = COMMAND_MAGIC;
+	command.command = COMMAND_ACK;
 
-		if (pdriver->dev < 0) {
-			fprintf(stderr, "attempt to read from closed device\n");
-			return -1;
-		}
-
-		result = read(pdriver->dev, pdriver->buffer, MAX_BUFFER_SIZE);
-		if (result < 0) {
-			fprintf(stderr, "read failed\n");
-			return -1;
-		}
-
-		pdriver->offset = 0;
+	if (pdriver->dev < 0) {
+		fprintf(stderr, "attempt to read from closed device\n");
+		return -1;
 	}
 
-	memcpy(out, &buff->data[pdriver->offset], 4 + 2 * pdriver->num_channels);
-	pdriver->offset += 2 + pdriver->num_channels;
-	buff->num -= 1;
+	result = read(pdriver->dev, pdriver->buffer, MAX_BUFFER_SIZE);
+	if (result < 0) {
+		fprintf(stderr, "read failed\n");
+		return -1;
+	}
+
+	result = write(pdriver->dev, &command, sizeof(command_t));
+	if (result != sizeof(command_t)) {
+		fprintf(stderr, "ack write failed\n");
+		return -1;
+	}
+
+	p = pdriver->buffer;
+	*dropped = p[1];
+	p += 2;
+	for (int i = 0; i < pdriver->num_records; i++) {
+		*timestamps = * (unsigned int *) p; p += 2; timestamps += 1;
+		for (int j = 0; j < pdriver->num_channels; j++) {
+			*values = (*p) * 1.8 / 4095.0; p += 1; values += 1;
+		}
+	}
 
 	return 0;
 }
@@ -131,7 +150,6 @@ int driver_stop(driver_t *drv) {
 	command.magic = COMMAND_MAGIC;
 	command.command = COMMAND_STOP;
 
-	/* write data to the payload[] buffer in the PRU firmware. */
 	write(pdriver->dev, &command, sizeof(command));
 
 	close(pdriver->dev);

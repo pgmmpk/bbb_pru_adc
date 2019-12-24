@@ -24,6 +24,7 @@ typedef struct {
  */
 typedef struct {
     command_t header;
+    uint16_t  speed;          // 0 - highest speed, 8-lowest
     uint16_t  num_channels;   // 1-8
     uint8_t   channels[8];
 } command_start_t;

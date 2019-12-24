@@ -82,7 +82,6 @@ volatile register uint32_t __R31;
 typedef struct {
 	struct pru_rpmsg_transport transport;
 	uint16_t src, dst;
-	uint16_t acked;
 } io_t;
 
 io_t *io_open() {
@@ -109,8 +108,6 @@ io_t *io_open() {
 
 	/* Clear the event status */
 	CT_INTC.SICR_bit.STS_CLR_IDX = FROM_ARM_HOST;
-
-	io.acked = 1;
 
 	return &io;
 }
@@ -140,10 +137,21 @@ uint16_t io_recv(io_t *pio, void *buffer) {
 }
 
 uint16_t io_send(io_t *pio, void *payload, uint16_t len) {
-	if (len > 0 && pru_rpmsg_send(&pio->transport, pio->dst, pio->src, payload, len) == PRU_RPMSG_SUCCESS) {
+	int16_t rc;
+	if (len == 0) return 0;
+
+	rc = pru_rpmsg_send(&pio->transport, pio->dst, pio->src, payload, len);
+	if (rc == PRU_RPMSG_SUCCESS) {
 		return len;
 	}
 	return 0;
+}
+
+void io_close(io_t *pio) {
+	while (pru_rpmsg_channel(RPMSG_NS_DESTROY, &pio->transport, CHAN_NAME,
+			CHAN_DESC, CHAN_PORT) != PRU_RPMSG_SUCCESS) {
+		/* Optional: implement timeout logic */
+	};
 }
 
 typedef struct {
@@ -152,7 +160,7 @@ typedef struct {
 	uint16_t value[9];   // extra value is used as a dump
 } adc_t;
 
-adc_t *adc_open(uint16_t num_channels, uint8_t *channels) {
+adc_t *adc_open(uint16_t speed, uint16_t num_channels, uint8_t *channels) {
 	static adc_t adc;
 	uint16_t i;
 
@@ -178,7 +186,7 @@ adc_t *adc_open(uint16_t num_channels, uint8_t *channels) {
 	 */
 	ADC_TSC.CTRL_bit.ENABLE = 0;
 	ADC_TSC.CTRL_bit.STEPCONFIG_WRITEPROTECT_N_ACTIVE_LOW = 1;
-	ADC_TSC.ADC_CLKDIV_bit.ADC_CLKDIV = 0;  // set to max speed
+	ADC_TSC.ADC_CLKDIV_bit.ADC_CLKDIV = speed;  // set to max speed
 
 	/* 
 	 * set the ADC_TSC STEPCONFIG1 register for channel 5  
@@ -340,31 +348,29 @@ uint16_t adc_read(adc_t *padc, uint16_t *values) {
 uint8_t recv_buffer[MAX_SIZE];
 
 typedef struct {
-#define RING_SIZE_LOG 0
-#define RING_SIZE (1 << RING_SIZE_LOG)
-#define RING_SIZE_MASK (RING_SIZE - 1)
+#define RING_SIZE 8
+	uint16_t available;
+	uint16_t head;
 	uint8_t rings[RING_SIZE][MAX_SIZE];
-	uint16_t head;  // id of current buffer
-	uint16_t num_free;
 } ring_t;
 
 
-void *ring_get_buffer(ring_t *ring) {
+void *ring_allocate_buffer(ring_t *ring) {
 	void *p = (void *) ring->rings[ring->head];
-	if (ring->num_free == 0) return NULL;
-	ring->head = (ring->head + 1) & RING_SIZE_MASK;
-	ring->num_free -= 1;
+	if (ring->available == 0) return NULL;
+	ring->head = (ring->head + 1) & (RING_SIZE - 1);
+	ring->available -= 1;
 	return p;
 }
 
 void ring_release_buffer(ring_t *ring) {
-	ring->num_free += 1;
+	ring->available += 1;
 }
 
 ring_t *ring_open() {
 	static ring_t r;
 	r.head = 0;
-	r.num_free = RING_SIZE;
+	r.available = RING_SIZE;
 	return &r;
 }
 
@@ -376,15 +382,15 @@ void send_to_buffer(io_t *pio, ring_t *ring,
 	int size;
 
 	if (b == NULL) {
-		b = (buffer_t *) ring_get_buffer(ring);
+		b = (buffer_t *) ring_allocate_buffer(ring);
 		if (b == NULL) {
 			// no more buffers!
 			dropped += 1;
 			return;
 		}
-		offset = 0;
-		b->num = 0;
 		b->num_dropped = dropped > 0xffff ? 0xffff : dropped;
+		b->num = 0;
+		offset = 0;
 		dropped = 0;
 	}
 
@@ -396,12 +402,13 @@ void send_to_buffer(io_t *pio, ring_t *ring,
 	if (size + sizeof(uint16_t) * (2 + num_channels)  > MAX_SIZE) {
 		// next measurement will not fit here, have to send!
 		if (io_send(pio, b, size) != size) {
-			dropped = b->num + b->num_dropped;
-			b->num_dropped = 0;
+			b->num_dropped = 0xffff; // (b->num + b->num_dropped) > 0xffff ? 0xffff : (b->num + b->num_dropped);
 			b->num = 0;
+			dropped = 0;
 			offset = 0;
 		} else {
 			b = NULL;
+			dropped = 0;
 		}
 	}
 }
@@ -432,7 +439,7 @@ void main(void) {
 		if (len >= sizeof(command_t) && cmd->magic == COMMAND_MAGIC) {
 			if (padc == NULL && cmd->command == COMMAND_START) {
 				command_start_t *start = (command_start_t *) recv_buffer;
-				padc = adc_open(start->num_channels, start->channels);
+				padc = adc_open(start->speed, start->num_channels, start->channels);
 				PRU0_CTRL.CYCLE = 0;
 			} else if (padc != NULL && cmd->command == COMMAND_ACK) {
 				ring_release_buffer(ring);  // CPU acknowledged receiving data buffer
@@ -449,7 +456,7 @@ void main(void) {
 				uint32_t cycles = PRU0_CTRL.CYCLE;
 				PRU0_CTRL.CYCLE = 0;
 				send_to_buffer(pio, ring, cycles, values, len);
-				//__delay_cycles(10000); // trying to add stability (avoid kernel lock ups)
+				// __delay_cycles(20000); // trying to add stability (avoid kernel lock ups)
 			}
 		}
 	}

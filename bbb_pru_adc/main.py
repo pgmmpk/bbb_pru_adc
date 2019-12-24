@@ -9,15 +9,28 @@ if __name__ == '__main__':
 
     data = []
 
-    start = time.time()
     bad = 0
-    with capture([5, 6, 7], auto_install=True
-    ) as cap:
-        for x in itertools.islice(cap, 0, 10):
-            # data.append(x)
-            if x is None:
-                bad += 1
-            # time.sleep(0.00001)
+    good = 0
+    with capture([0, 1, 2, 3, 4 ,5 ,6 ,7], auto_install=True, speed=1) as cap:
+        start = time.time()
+        for num_dropped, timestamps, values in itertools.islice(cap, 0, 10000):
+            bad += num_dropped
+            good += len(timestamps)
+            # time.sleep(0.001)
+            #data.append(list(values))
 
     elapsed = time.time() - start
-    print('Elapsed:', elapsed, bad)
+    print('Elapsed:', elapsed, bad, good)
+    print('KHz:', round((bad + good) / elapsed / 1000, 3))
+
+'''
+speed=0    speed=1   speed=32    speed=16
+1: 16.2    8.1       0.54        1.037
+2: 16.2
+3: 16.1
+4: 16.1    7.733                 1.025
+5: 16.0              0.54
+6: 16.0
+7: 15.9
+8: 15.8    7.266     0.53        1.024
+'''

@@ -10,9 +10,11 @@ typedef struct {
     unsigned char eye[8];
 } driver_t;
 
-extern driver_t *driver_start(unsigned int num_channels, unsigned char const *channels);
+extern driver_t *driver_start(unsigned int speed, unsigned int num_channels, unsigned char const *channels);
 
-extern int driver_read(driver_t *drv, reading_t *buffer);
+extern int driver_read(driver_t *drv, int *num_dropped, unsigned int *timestamps, float *values);
 extern int driver_stop(driver_t *drv);
+
+extern int driver_num_records(unsigned int num_channels);
 
 #endif
