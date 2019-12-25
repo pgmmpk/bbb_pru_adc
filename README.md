@@ -1,4 +1,6 @@
 # Streaming ADC capture on BeagleBone (Black) with PRU
+[![PyPI version](https://badge.fury.io/py/bbb-pru-adc.svg)](https://badge.fury.io/py/bbb-pru-adc)
+
 Provides PRU firmware that captures up to 8 ADC channels, and userspace driver
 to receive this as a stream of buffers containing voltage readings from ADC.
 

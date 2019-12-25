@@ -21,15 +21,19 @@ setup(
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
     ],
     keywords='beaglebone black adc pru',
     packages=['bbb_pru_adc'],
-    python_requires='>=3.6, <4',
+    python_requires='>=3.7, <4',
     package_data={'bbb_pru_adc': ['resources/*']},
     data_files=[
         ('src', glob.glob('src/*')),
     ],
+    # # this is a hack - we do not really use the built static library
+    # # but we want the side-effect: wheel is for ARM platform only -MK
+    # libraries=[('driver', {
+    #     'sources': ['src/driver.c'],
+    # })],
 )
