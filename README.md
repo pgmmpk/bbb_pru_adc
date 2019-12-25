@@ -139,15 +139,15 @@ Overall logic is this:
 1. Initialize RPMSG communication subsystem (this creates character device `/dev/rpmsg-pru30`)
 2. Initialize array of 8 ring buffers that we will use for data exchange with CPU
 3. Enter main loop, where we:
-   a. wait for incoming `START` command with parameters `speed` and `channels`. When received,
-      we initialize ADC for the given channels and capture speed and start capturing.
-   b. if `STOP` command arrives from CPU side while we are capturing, we stop the ADC capture
-   c. if `ACK` command arrives from CPU, we release one ring buffer (CPU sends this command
-      to acknowledge data receipt)
-   d. when ADC capture finishes we push the readings to the ring buffer. If ring buffer is
-      full, we send it out to the CPU side and try to get a new ring buffer. When CPU side
-      is slow, we may run out of buffers. Then we will drop the reading. After pushing
-      the readings to the ring buffer we schedule another ADC capture.
+    a. wait for incoming `START` command with parameters `speed` and `channels`. When received,
+       we initialize ADC for the given channels and capture speed and start capturing.
+    b. if `STOP` command arrives from CPU side while we are capturing, we stop the ADC capture
+    c. if `ACK` command arrives from CPU, we release one ring buffer (CPU sends this command
+       to acknowledge data receipt)
+    d. when ADC capture finishes we push the readings to the ring buffer. If ring buffer is
+       full, we send it out to the CPU side and try to get a new ring buffer. When CPU side
+       is slow, we may run out of buffers. Then we will drop the reading. After pushing
+       the readings to the ring buffer we schedule another ADC capture.
 
 ### Driver
 On the CPU side we do this:
