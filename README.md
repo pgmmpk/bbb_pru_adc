@@ -121,8 +121,8 @@ values. For example, setting `speed=9` will capture 10 times slower (at about 1.
 `auto_install` - if we detect that firmware is not installed, or is different, attempt to re-install by copying firmware file from python package resources to `/lib/firmware`. This action requires root priveleges. Once installed, you can use the driver as a non-root user.
 
 Important! `timestamps` and `values` returned by the generator are re-used and content will be
-overwritted on next iteration. Do not store these buffers. If you are not processing data immediately,
-copy it out.
+overwritten on next iteration. Do not store these buffers. If you are not processing data immediately,
+copy them out.
 
 ## Internals
 
