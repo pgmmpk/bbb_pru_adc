@@ -6,7 +6,7 @@ with open('README.md') as f:
 
 setup(
     name='bbb_pru_adc',
-    version='1.0.1',
+    version='1.0.2',
 
     description='Streaming capture of ADC on BeagleBone (Black)',
     long_description=long_description,
