@@ -7,7 +7,7 @@ import time
 
 
 def _fw_name(x):
-    return f'/lib/firmware/{os.path.basename(x)}'
+    return '/lib/firmware/' + os.path.basename(x)
 
 def relative(*av):
     '''helper to build file paths relative to the driver location'''
@@ -97,10 +97,10 @@ class Driver:
     
     def stop(self):
         if self.fw0 is not None:
-            with open(f'/sys/class/remoteproc/remoteproc1/state', 'w') as f:
+            with open('/sys/class/remoteproc/remoteproc1/state', 'w') as f:
                 f.write('stop\n')
         if self.fw1 is not None:
-            with open(f'/sys/class/remoteproc/remoteproc2/state', 'w') as f:
+            with open('/sys/class/remoteproc/remoteproc2/state', 'w') as f:
                 f.write('stop\n')
 
     @contextlib.contextmanager

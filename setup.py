@@ -6,7 +6,7 @@ with open('README.md') as f:
 
 setup(
     name='bbb_pru_adc',
-    version='1.0.1',
+    version='1.0.2',
 
     description='Streaming capture of ADC on BeagleBone (Black)',
     long_description=long_description,
@@ -21,12 +21,14 @@ setup(
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
     ],
     keywords='beaglebone black adc pru',
     packages=['bbb_pru_adc'],
-    python_requires='>=3.7, <4',
+    python_requires='>=3.5, <4',
     package_data={'bbb_pru_adc': ['resources/*']},
     data_files=[
         ('src', glob.glob('src/*')),
