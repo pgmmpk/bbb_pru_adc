@@ -69,6 +69,7 @@ class Driver:
             with open('/sys/class/remoteproc/remoteproc2/state', 'w') as f:
                 f.write('start\n')
 
+    def wait_for_device(self):
         if self.fw0 is not None:
             # wait for rpmsg character devices to get ready
             for _ in range(100):
@@ -77,7 +78,8 @@ class Driver:
                         with open('/dev/rpmsg_pru30', 'rb'):
                             break
                     except OSError as err:
-                        pass
+                        if err.errno == 13: # Permisison error
+                            raise
                 time.sleep(3.0/100)
             else:
                 raise RuntimeError('Timeout waiting for /dev/rpmsg_pru0 device')
@@ -112,6 +114,7 @@ class Driver:
                 raise RuntimeError('Firmware not installed into /lib/firmware folder')
         self.start()
         try:
+            self.wait_for_device()
             yield
         finally:
             self.stop()
