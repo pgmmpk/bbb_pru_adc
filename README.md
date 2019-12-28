@@ -17,9 +17,9 @@ Features:
 
 ## Requirements
 
-1. Hardware: BeagleBone (Black)
+1. Hardware: BeagleBone (Black), With RPROC (not UIO) enabled in `/boot/uEnv.txt`
 2. OS: Debian GNU/Linux 10 (buster), see https://rcn-ee.com/rootfs/bb.org/testing/2019-12-10/buster-iot/
-3. Python 3.7 or better
+3. Python 3.5 or better
 4. Root access rights (needed to install firmware into `/lib/firmware` folder)
 
 ## Installation
