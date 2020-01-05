@@ -444,6 +444,7 @@ void main(void) {
 				command_start_t *start = (command_start_t *) recv_buffer;
 				padc = adc_open(start->speed, start->num_channels, start->channels);
 				max_num = start->max_num;
+				target_delay = start->target_delay;
 				PRU0_CTRL.CYCLE = 0;
 			} else if (padc != NULL && cmd->command == COMMAND_ACK) {
 				ring_release_buffer(ring);  // CPU acknowledged receiving data buffer
