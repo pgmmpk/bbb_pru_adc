@@ -7,7 +7,7 @@ import array
 _dll = CDLL(relative('resources/libdriver.so'))
 
 @contextlib.contextmanager
-def capture(channels, auto_install=False, speed=0):
+def capture(channels, auto_install=False, speed=0, max_num=0, target_delay=0):
     '''
     ADC capture.
 
@@ -23,6 +23,13 @@ def capture(channels, auto_install=False, speed=0):
             1 -> a bit slower
             2 -> even slower
             ...
+
+        max_num - put a limit on the number of readings per buffer. This makes it
+            possible to lower the latency. Default is 0, that disables the limit.
+            When limit is disabled, number of samples is determined by the buffer size.
+
+        target_delay - number of PRU cycles between ADC captures. One cycle is 5ns.
+            This allows one to lower the capture frequency and target a specific value.
 
     To capture just one value per read, pass a channels list of size 1.
 
@@ -88,7 +95,13 @@ def capture(channels, auto_install=False, speed=0):
     pru = Driver(fw0=relative('resources/am335x-pru0.fw'))
     with pru(auto_install=auto_install):
         c_channels = c_ubyte*num_channels
-        driver = _dll.driver_start(c_ushort(speed), c_ushort(num_channels), c_channels(*channels))
+        driver = _dll.driver_start(
+            c_uint(speed),
+            c_uint(num_channels),
+            c_channels(*channels),
+            c_uint(max_num),
+            c_uint(target_delay)
+        )
         def reader():
             tms_addr, _ = timestamps.buffer_info()
             val_addr, _ = values.buffer_info()

@@ -69,7 +69,12 @@ typedef struct {
 } driver_impl_t;
 
 
-driver_t *driver_start(unsigned int speed, unsigned int num_channels, unsigned char const *channels) {
+driver_t *driver_start(unsigned int speed,
+		unsigned int num_channels,
+		unsigned char const *channels,
+		unsigned int max_num,
+		unsigned int target_delay
+) {
 	static driver_impl_t driver;
 	command_start_t command;
 
@@ -90,6 +95,8 @@ driver_t *driver_start(unsigned int speed, unsigned int num_channels, unsigned c
 	for (int i = 0; i < num_channels; i++) {
 		command.channels[i] = channels[i];
 	}
+	command.max_num = max_num;
+	command.target_delay = target_delay;
 
 	/* write data to the payload[] buffer in the PRU firmware. */
 	size_t result = write(driver.dev, &command, sizeof(command));

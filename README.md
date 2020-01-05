@@ -118,11 +118,58 @@ values. For example, setting `speed=9` will capture 10 times slower (at about 1.
 
 `channels` - which AIN pins (aka channels) to capture.
 
+`max_num` - limits the number of readings per buffer. This is an advanced functionality, see the section
+below. Deafult is 0 that disables this limit.
+
+`target_delay` - target number of PRU cycles (5ns per cycle) per capture. This allows one to fine-tune
+the capture speed. This is an advanced functionality, see the section below. Default is 0 which
+disables this functionality.
+
 `auto_install` - if we detect that firmware is not installed, or is different, attempt to re-install by copying firmware file from python package resources to `/lib/firmware`. This action requires root priveleges. Once installed, you can use the driver as a non-root user.
 
 Important! `timestamps` and `values` returned by the generator are re-used and content will be
 overwritten on next iteration. Do not store these buffers. If you are not processing data immediately,
 copy them out.
+
+### Advanced use: `target_delay`
+Normally, the time between two ADC captures is determined by the following factors:
+1. ADC capture speed (see `speed` parameter)
+2. Time needed to send out the data
+This time can slightly vary, because number of operations depends on buffering state and other
+factors pertaining to PRU/CPU communication.
+
+Actual number of cycles is reported in the `timestamps` array.
+
+The `target_delay` parameter sets the minimal number of PRU cycles. PRU will idle until the specified
+number of PRU timesteps is reached. This allows one to:
+a. Remove timestamp jitters
+b. Fine-tune the capture speed to any desirable number (limited by the overall capture speed - around 16kHz)
+
+To target a specific capture frequence, do the following:
+* choose `speed` parameter to find the largest value that produces capture frequence just above
+  the desired one, then
+* compute the target number of PRU cycles for the desired frequency and set `target_delay` to that
+  value
+* measure the actual capture frequency
+* if it deviates from the desired one, change `target_delay` a bit to adjust. If actual frequency
+  is lower than desired, lower `target_dealy` value. If actual frequency is higher than desired,
+  increase the `target_delay` value.
+
+This should allow one to get very precise capture frequency.
+
+### Advanced use: `max_num`
+Normally, driver will use all available space in the communication buffer (512-16 bytes). Buffer
+size is determined by the `remoteproc` kernel module. Using all available buffer space
+minimizes bandwidth loss due to the control information (attached to each buffer sent), and thus
+minimizes the chance of data loss. In short, if you want the most efficient data transfer, do not
+change this value.
+
+Somethimes, you may want to use smaller buffers. For example, to ensure lower latency (at the cost
+of getting less efficient comunication). You can do this by setting `max_num`.
+
+The `max_num` parameter ensures that no more than that many ADC readings will be packed per buffer.
+If you set it to a high value, the real limit will be the communication buffer size and parameter
+will be effectively ignored.
 
 ## Internals
 
