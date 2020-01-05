@@ -351,7 +351,6 @@ typedef struct {
 #define RING_SIZE 8
 	uint16_t available;
 	uint16_t head;
-	uint16_t buffer_limit;
 	uint8_t rings[RING_SIZE][MAX_SIZE];
 } ring_t;
 
