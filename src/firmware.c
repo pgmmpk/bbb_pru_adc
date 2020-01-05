@@ -460,7 +460,7 @@ void main(void) {
 				while (PRU0_CTRL.CYCLE < target_delay) {}
 				uint32_t cycles = PRU0_CTRL.CYCLE;
 				PRU0_CTRL.CYCLE = 0;
-				send_to_buffer(pio, ring, cycles, values, len);
+				send_to_buffer(pio, ring, cycles, values, len, max_num);
 			}
 		}
 	}
