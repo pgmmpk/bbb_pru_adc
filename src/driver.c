@@ -55,8 +55,12 @@
 
 #define MAX_BUFFER_SIZE			512
 
-int driver_num_records(unsigned int num_channels) {
-    return (512 - 16 - 4) / (4 + 2 * num_channels);
+int driver_num_records(unsigned int num_channels, unsigned int max_num) {
+        int num_records = (512 - 16 - 4) / (4 + 2 * num_channels);
+        if (max_num > 0 && num_records > max_num) {
+                num_records = max_num;
+        }
+        return num_records;
 }
 
 
@@ -80,7 +84,7 @@ driver_t *driver_start(unsigned int speed,
 
 	memset(&driver, '\0', sizeof(driver));
 	driver.num_channels = num_channels;
-	driver.num_records = driver_num_records(num_channels);
+	driver.num_records = driver_num_records(num_channels, max_num);
 	driver.dev = open("/dev/rpmsg_pru30", O_RDWR); // | O_NONBLOCK);
 	if (driver.dev < 0) {
 		fprintf(stderr, "could not open /dev/rpmsg_pru30\n");

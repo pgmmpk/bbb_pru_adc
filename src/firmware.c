@@ -375,7 +375,7 @@ ring_t *ring_open() {
 }
 
 void send_to_buffer(io_t *pio, ring_t *ring,
-		uint32_t cycles, uint16_t *values, uint16_t num_channels, unit16_t max_num) {
+		uint32_t cycles, uint16_t *values, uint16_t num_channels, uint16_t max_num) {
 	static int offset = 0;
 	static int dropped = 0;
 	static buffer_t *b = NULL;
@@ -399,7 +399,8 @@ void send_to_buffer(io_t *pio, ring_t *ring,
 	b->num += 1;
 
 	size = ((uint8_t *) &b->data[offset]) - ((uint8_t *) b);
-	if (size + sizeof(uint16_t) * (2 + num_channels)  > MAX_SIZE || b->num == max_num) {
+	if (size + sizeof(uint16_t) * (2 + num_channels)  > MAX_SIZE
+			|| max_num == b->num) {
 		// next measurement will not fit here, have to send!
 		if (io_send(pio, b, size) != size) {
 			b->num_dropped = 0xffff; // (b->num + b->num_dropped) > 0xffff ? 0xffff : (b->num + b->num_dropped);
@@ -457,8 +458,10 @@ void main(void) {
 			uint16_t len = adc_read(padc, values);
 			if (len > 0) {
 				// assert (len == padc->num_channels);
-				while (PRU0_CTRL.CYCLE < target_delay) {}
 				uint32_t cycles = PRU0_CTRL.CYCLE;
+				while (cycles < target_delay) {
+				        cycles = PRU0_CTRL.CYCLE;
+                                }
 				PRU0_CTRL.CYCLE = 0;
 				send_to_buffer(pio, ring, cycles, values, len, max_num);
 			}

@@ -88,6 +88,8 @@ def capture(channels, auto_install=False, speed=0, max_num=0, target_delay=0):
         raise ValueError('Speed must be in 0..0xffff')
 
     num_records = (512-16-4) // (4 + 2 * num_channels)
+    if max_num > 0 and max_num < num_records:
+        num_records = max_num
     timestamps = array.array('I', [0] * num_records)
     values = array.array('f', [0.] * (num_records * num_channels))
     num_dropped = c_ushort()
