@@ -27,6 +27,8 @@ typedef struct {
     uint16_t  speed;          // 0 - highest speed, 8-lowest
     uint16_t  num_channels;   // 1-8
     uint8_t   channels[8];
+    uint32_t  max_num;        // if non-zero, limits the number of captures per buffer
+    uint32_t  target_delay;   // target dealy between captures
 } command_start_t;
 
 /*

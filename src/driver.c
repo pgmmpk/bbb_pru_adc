@@ -55,8 +55,12 @@
 
 #define MAX_BUFFER_SIZE			512
 
-int driver_num_records(unsigned int num_channels) {
-    return (512 - 16 - 4) / (4 + 2 * num_channels);
+int driver_num_records(unsigned int num_channels, unsigned int max_num) {
+        int num_records = (512 - 16 - 4) / (4 + 2 * num_channels);
+        if (max_num > 0 && num_records > max_num) {
+                num_records = max_num;
+        }
+        return num_records;
 }
 
 
@@ -69,13 +73,18 @@ typedef struct {
 } driver_impl_t;
 
 
-driver_t *driver_start(unsigned int speed, unsigned int num_channels, unsigned char const *channels) {
+driver_t *driver_start(unsigned int speed,
+		unsigned int num_channels,
+		unsigned char const *channels,
+		unsigned int max_num,
+		unsigned int target_delay
+) {
 	static driver_impl_t driver;
 	command_start_t command;
 
 	memset(&driver, '\0', sizeof(driver));
 	driver.num_channels = num_channels;
-	driver.num_records = driver_num_records(num_channels);
+	driver.num_records = driver_num_records(num_channels, max_num);
 	driver.dev = open("/dev/rpmsg_pru30", O_RDWR); // | O_NONBLOCK);
 	if (driver.dev < 0) {
 		fprintf(stderr, "could not open /dev/rpmsg_pru30\n");
@@ -90,6 +99,8 @@ driver_t *driver_start(unsigned int speed, unsigned int num_channels, unsigned c
 	for (int i = 0; i < num_channels; i++) {
 		command.channels[i] = channels[i];
 	}
+	command.max_num = max_num;
+	command.target_delay = target_delay;
 
 	/* write data to the payload[] buffer in the PRU firmware. */
 	size_t result = write(driver.dev, &command, sizeof(command));

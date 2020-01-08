@@ -5,5 +5,6 @@ bbb_pru_adc/resources/*.so
 bbb_pru_adc/resources/*.fw
 gen/firmware*
 *egg-info
+*.pyc
 build
 dist

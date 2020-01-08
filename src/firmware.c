@@ -375,7 +375,7 @@ ring_t *ring_open() {
 }
 
 void send_to_buffer(io_t *pio, ring_t *ring,
-		uint32_t cycles, uint16_t *values, uint16_t num_channels) {
+		uint32_t cycles, uint16_t *values, uint16_t num_channels, uint16_t max_num) {
 	static int offset = 0;
 	static int dropped = 0;
 	static buffer_t *b = NULL;
@@ -399,7 +399,8 @@ void send_to_buffer(io_t *pio, ring_t *ring,
 	b->num += 1;
 
 	size = ((uint8_t *) &b->data[offset]) - ((uint8_t *) b);
-	if (size + sizeof(uint16_t) * (2 + num_channels)  > MAX_SIZE) {
+	if (size + sizeof(uint16_t) * (2 + num_channels)  > MAX_SIZE
+			|| max_num == b->num) {
 		// next measurement will not fit here, have to send!
 		if (io_send(pio, b, size) != size) {
 			b->num_dropped = 0xffff; // (b->num + b->num_dropped) > 0xffff ? 0xffff : (b->num + b->num_dropped);
@@ -419,6 +420,8 @@ void main(void) {
 	ring_t *ring;
 	adc_t *padc = NULL;
 	command_t *cmd = (command_t *) recv_buffer;
+	uint16_t max_num = 0;  // if non-zero, limits the buffer size
+	uint32_t target_delay = 0;  // target number of PRU cycles between captures
 
 	/* 
 	 * Allow OCP master port access by the PRU so the PRU can read 
@@ -440,6 +443,8 @@ void main(void) {
 			if (padc == NULL && cmd->command == COMMAND_START) {
 				command_start_t *start = (command_start_t *) recv_buffer;
 				padc = adc_open(start->speed, start->num_channels, start->channels);
+				max_num = start->max_num;
+				target_delay = start->target_delay;
 				PRU0_CTRL.CYCLE = 0;
 			} else if (padc != NULL && cmd->command == COMMAND_ACK) {
 				ring_release_buffer(ring);  // CPU acknowledged receiving data buffer
@@ -454,9 +459,11 @@ void main(void) {
 			if (len > 0) {
 				// assert (len == padc->num_channels);
 				uint32_t cycles = PRU0_CTRL.CYCLE;
+				while (cycles < target_delay) {
+				        cycles = PRU0_CTRL.CYCLE;
+                                }
 				PRU0_CTRL.CYCLE = 0;
-				send_to_buffer(pio, ring, cycles, values, len);
-				// __delay_cycles(20000); // trying to add stability (avoid kernel lock ups)
+				send_to_buffer(pio, ring, cycles, values, len, max_num);
 			}
 		}
 	}
