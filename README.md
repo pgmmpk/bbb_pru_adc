@@ -17,10 +17,12 @@ Features:
 
 ## Requirements
 
-1. Hardware: BeagleBone (Black), With RPROC (not UIO) enabled in `/boot/uEnv.txt`
-2. OS: Debian GNU/Linux 10 (buster), see https://rcn-ee.com/rootfs/bb.org/testing/2019-12-10/buster-iot/
+1. Hardware: BeagleBone (Black), With remoteproc (not UIO) enabled in `/boot/uEnv.txt`
+2. OS: Debian GNU/Linux 10 (buster), see https://rcn-ee.com/rootfs/bb.org/testing/2019-12-10/buster-iot/ Or Debian GNU/Linux 9.8 (the latter may need to be re-configured to use remoteproc)
 3. Python 3.5 or better
 4. Root access rights (needed to install firmware into `/lib/firmware` folder)
+
+Please note that (depending on your environment) you may need root priviledges to run this code.
 
 ## Installation
 
@@ -36,7 +38,7 @@ pip install bbb_pru_adc
 python3 -m bbb_pru_adc.main
 ```
 
-Here is the the code of the `main.c`:
+Here is the the code of the `main.c` - an example how to use this driver in Python:
 ```python
 import time
 import itertools
@@ -56,7 +58,7 @@ print('KHz:', round((bad + good) / elapsed / 1000, 3))
 ```
 
 ## Building from sources
-This step is not needed if you installed wheel from PyPI as described above. You need this only
+This step is **not needed** if you installed wheel from PyPI as described above. You need this only
 if you plan to make changes in firmware or driver.
 
 ```bash
@@ -82,7 +84,9 @@ Each incoming buffer contains three pieces of information:
     Length of this array is `num_readings`. Value is the number of PRU clock ticks
     since the last reading. These values allow one to know exact timing between two readings. Time
     distance between readings is fairly stable, small deviations are due to varying codepaths to
-    process outgoing and incoming messages. PRU clock runs at 200MHz (5ns per tick).
+    process outgoing and incoming messages. PRU clock runs at 200MHz (5ns per tick). Thus, the 
+    timestamp value of 1000 corresponds to 5 millisecons, value of 200000 corresponds to 1kHz, etc.
+
 
 How many readings do we have per buffer? This depends on the number of channels we capture.
 Exact answer is:
@@ -91,9 +95,14 @@ Exact answer is:
 num_readings = (512 - 16 - 4) // (4 + 2 * num_readings)
 ```
 
-This formula is mandated by IO buffer size limit (defined as 512 at kernel compile time).
+This formula is mandated by remoteproc IO buffer size limit (defined as 512 at kernel compile time).
 
 For a given capture session number of readings per buffer stays the same.
+
+Note that driver has `max_num` parameter that allows one to make `num_readings` smaller than the
+maximum allowed by the IO buffer size. This is an advanced functionality that may be used to
+achieve specific goals (e.g. lower latency or get exact number of readings per buffer). In most
+applications, this parameter should not be used.
 
 ## Capture API
 ```python
@@ -103,10 +112,10 @@ with capture(speed=0, channels=[3, 5, 7], auto_install=False) as cap:
     for num_dropped, timestamps, values in cap:
         # do something with this information
 ```
-This example starts capturing ADC inputs 3, 5, and 7 (`channels=[3, 5, 7]`) 
+This example starts capturing ADC inputs AIN3, AIN5, and AIN7 (`channels=[3, 5, 7]`) 
 at full speed (`speed=0`). It will not attempt to
 install PRU firmware (`auto_install=False`).
-If driver detects that system firmware is missing or obsolete, and error will be thrown.
+If driver detects that system firmware is missing or obsolete, an error will be thrown.
 
 Capture has to be used as a context manager. The context is a generator spitting out
 the pieces of our buffer.
@@ -116,9 +125,11 @@ Capture parameters:
 `speed` - ADC capture speed as a clock divider value. Fastest is `speed=0`, capturing at about 15KHz. In many applications 15KHz is just too much data (hard to process), and `speed` can be set to other
 values. For example, setting `speed=9` will capture 10 times slower (at about 1.5KHz).
 
-`channels` - which AIN pins (aka channels) to capture.
+`channels` - which AIN pins (aka channels) to capture. This is a list of 1 to 8 unique values, 
+representing the AIN pins to read. Note that values in the output buffer are layed out in the
+same order as `channels`.
 
-`max_num` - limits the number of readings per buffer. This is an advanced functionality, see the section
+`max_num` - limits the number of readings per buffer. This is advanced functionality, see the section
 below. Deafult is 0 that disables this limit.
 
 `target_delay` - target number of PRU cycles (5ns per cycle) per capture. This allows one to fine-tune
@@ -131,10 +142,14 @@ Important! `timestamps` and `values` returned by the generator are re-used and c
 overwritten on next iteration. Do not store these buffers. If you are not processing data immediately,
 copy them out.
 
+## Examples
+
+More code examples can be found in [examples](examples/) folder.
+
 ### Advanced use: `target_delay`
 Normally, the time between two ADC captures is determined by the following factors:
 1. ADC capture speed (see `speed` parameter)
-2. Time needed to send out the data
+2. Time needed to process and send out the data
 This time can slightly vary, because number of operations depends on buffering state and other
 factors pertaining to PRU/CPU communication.
 
@@ -149,7 +164,7 @@ To target a specific capture frequence, do the following:
 * choose `speed` parameter to find the largest value that produces capture frequence just above
   the desired one, then
 * compute the target number of PRU cycles for the desired frequency and set `target_delay` to that
-  value
+  value. Remember that PRU runs at 200MHz clock and one cycle takes 5ns.
 * measure the actual capture frequency
 * if it deviates from the desired one, change `target_delay` a bit to adjust. If actual frequency
   is lower than desired, lower `target_dealy` value. If actual frequency is higher than desired,
@@ -175,23 +190,24 @@ will be effectively ignored.
 
 There are three pieces of software:
 1. firmware running on PRU side `bbb_pru_adc/resources/am335x-pru0.fw`, built from 
-   `src/firmware.c`, `src/firmware.h`.
+   `src/firmware.c`, `src/firmware.h`, and `src/common.h`.
 2. CPU-side userspace driver that handles low-level details of communication with PRU
-   `bbb_pru_adc/resources/libdriver.so`, built from `src/driver.c`, `src/driver.h`
+   `bbb_pru_adc/resources/libdriver.so`, built from `src/driver.c`, `src/driver.h`, and `src/common.h`
 3. Python code that is responsible for installing the firmware and starting and terminating
    the PRU processor.
 
 ### Firmware
 Overall logic is this:
-1. Initialize RPMSG communication subsystem (this creates character device `/dev/rpmsg-pru30`)
+1. Initialize `remoteproc` communication subsystem (this creates character device `/dev/rpmsg-pru30`)
 2. Initialize array of 8 ring buffers that we will use for data exchange with CPU
 3. Enter main loop, where we:
-    a. wait for incoming `START` command with parameters `speed` and `channels`. When received,
+    a. wait for incoming `START` command with parameters `speed`, `channels`, `max-num`, and
+       `target_delay`. When received,
        we initialize ADC for the given channels and capture speed and start capturing.
     b. if `STOP` command arrives from CPU side while we are capturing, we stop the ADC capture
     c. if `ACK` command arrives from CPU, we release one ring buffer (CPU sends this command
        to acknowledge data receipt)
-    d. when ADC capture finishes we push the readings to the ring buffer. If ring buffer is
+    d. when one ADC capture completes, we push the readings to the ring buffer. If ring buffer is
        full, we send it out to the CPU side and try to get a new ring buffer. When CPU side
        is slow, we may run out of buffers. Then we will drop the reading. After pushing
        the readings to the ring buffer we schedule another ADC capture.
@@ -199,9 +215,10 @@ Overall logic is this:
 ### Driver
 On the CPU side we do this:
 1. `driver_start` method opens `/dev/rpmsg-pru30` device and writes a message there
-   with `command=START`, and `speed` and `channels` values, to ask PRU to start ADC capture
+   with `command=START`, and `speed`, `channels`, `max_num`, and `target_delay` values
+   to ask PRU to start ADC capture
 2. `driver_read` method reads device file, blocking until a message arrives. It then sends
-   out and `ACK` command, and unpacks the data from received buffer into the caller's buffers.
+   out the `ACK` command, and unpacks the data from received buffer into the caller's buffers.
 3. `driver_stop` sends `STOP` command to the PRU
 
 ### Python side
