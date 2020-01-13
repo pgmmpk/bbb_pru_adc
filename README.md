@@ -33,12 +33,12 @@ python3 -m venv .venv
 pip install bbb_pru_adc
 ```
 
-## Running an example code
+## Running sample code
 ```bash
 python3 -m bbb_pru_adc.main
 ```
 
-Here is the the code of the `main.c` - an example how to use this driver in Python:
+Here is the the code of the `main.py` - an example how to use this driver in Python:
 ```python
 import time
 import itertools
@@ -56,6 +56,10 @@ elapsed = time.time() - start
 print('Elapsed:', elapsed, bad, good)
 print('KHz:', round((bad + good) / elapsed / 1000, 3))
 ```
+
+## More samples
+
+More code examples can be found in [examples](examples/) folder.
 
 ## Building from sources
 This step is **not needed** if you installed wheel from PyPI as described above. You need this only
@@ -141,10 +145,6 @@ disables this functionality.
 Important! `timestamps` and `values` returned by the generator are re-used and content will be
 overwritten on next iteration. Do not store these buffers. If you are not processing data immediately,
 copy them out.
-
-## Examples
-
-More code examples can be found in [examples](examples/) folder.
 
 ### Advanced use: `target_delay`
 Normally, the time between two ADC captures is determined by the following factors:
