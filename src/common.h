@@ -24,9 +24,10 @@ typedef struct {
  */
 typedef struct {
     command_t header;
-    uint16_t  speed;          // 0 - highest speed, 8-lowest
-    uint16_t  num_channels;   // 1-8
+    uint32_t  clk_div;        // 0 - highest speed, 8 - lowest
+    uint32_t  num_channels;   // 1-8
     uint8_t   channels[8];
+    uint32_t  step_avg;       // 0 - no averaging, 4 - average over 16 samples
     uint32_t  max_num;        // if non-zero, limits the number of captures per buffer
     uint32_t  target_delay;   // target dealy between captures
 } command_start_t;

@@ -73,7 +73,9 @@ typedef struct {
 } driver_impl_t;
 
 
-driver_t *driver_start(unsigned int speed,
+driver_t *driver_start(
+		unsigned int clk_div,
+		unsigned int step_avg,
 		unsigned int num_channels,
 		unsigned char const *channels,
 		unsigned int max_num,
@@ -94,7 +96,8 @@ driver_t *driver_start(unsigned int speed,
 	memset(&command, '\0', sizeof(command_t));
 	command.header.magic = COMMAND_MAGIC;
 	command.header.command = COMMAND_START;
-	command.speed = speed;
+	command.clk_div = clk_div;
+	command.step_avg = step_avg;
 	command.num_channels = num_channels;
 	for (int i = 0; i < num_channels; i++) {
 		command.channels[i] = channels[i];

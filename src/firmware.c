@@ -73,8 +73,6 @@ volatile register uint32_t __R31;
 #define CM_WKUP_CLKSTCTRL  (*((volatile unsigned int *)0x44E00400))
 #define CM_WKUP_ADC_TSC_CLKCTRL  (*((volatile unsigned int *)0x44E004BC))
 
-#define ADC_AVERAGING 0
-
 /* payload receives RPMsg message */
 #define RPMSG_BUF_HEADER_SIZE           16
 #define MAX_SIZE (RPMSG_BUF_SIZE - RPMSG_BUF_HEADER_SIZE)
@@ -160,7 +158,7 @@ typedef struct {
 	uint16_t value[9];   // extra value is used as a dump
 } adc_t;
 
-adc_t *adc_open(uint16_t speed, uint16_t num_channels, uint8_t *channels) {
+adc_t *adc_open(uint16_t clk_div, uint16_t step_avg, uint16_t num_channels, uint8_t *channels) {
 	static adc_t adc;
 	uint16_t i;
 
@@ -186,7 +184,7 @@ adc_t *adc_open(uint16_t speed, uint16_t num_channels, uint8_t *channels) {
 	 */
 	ADC_TSC.CTRL_bit.ENABLE = 0;
 	ADC_TSC.CTRL_bit.STEPCONFIG_WRITEPROTECT_N_ACTIVE_LOW = 1;
-	ADC_TSC.ADC_CLKDIV_bit.ADC_CLKDIV = speed;  // set to max speed
+	ADC_TSC.ADC_CLKDIV_bit.ADC_CLKDIV = clk_div;
 
 	/* 
 	 * set the ADC_TSC STEPCONFIG1 register for channel 5  
@@ -196,7 +194,7 @@ adc_t *adc_open(uint16_t speed, uint16_t num_channels, uint8_t *channels) {
 	 * use FIFO0
 	 */
 	ADC_TSC.STEPCONFIG1_bit.MODE = 0;
-	ADC_TSC.STEPCONFIG1_bit.AVERAGING = ADC_AVERAGING;
+	ADC_TSC.STEPCONFIG1_bit.AVERAGING = step_avg;
 	ADC_TSC.STEPCONFIG1_bit.SEL_INP_SWC_3_0 = 0;
 	ADC_TSC.STEPCONFIG1_bit.FIFO_SELECT = 0;
 
@@ -208,7 +206,7 @@ adc_t *adc_open(uint16_t speed, uint16_t num_channels, uint8_t *channels) {
 	 * use FIFO0
 	 */
 	ADC_TSC.STEPCONFIG2_bit.MODE = 0;
-	ADC_TSC.STEPCONFIG2_bit.AVERAGING = ADC_AVERAGING;
+	ADC_TSC.STEPCONFIG2_bit.AVERAGING = step_avg;
 	ADC_TSC.STEPCONFIG2_bit.SEL_INP_SWC_3_0 = 1;
 	ADC_TSC.STEPCONFIG2_bit.FIFO_SELECT = 0;
 
@@ -220,7 +218,7 @@ adc_t *adc_open(uint16_t speed, uint16_t num_channels, uint8_t *channels) {
 	 * use FIFO0
 	 */
 	ADC_TSC.STEPCONFIG3_bit.MODE = 0;
-	ADC_TSC.STEPCONFIG3_bit.AVERAGING = ADC_AVERAGING;
+	ADC_TSC.STEPCONFIG3_bit.AVERAGING = step_avg;
 	ADC_TSC.STEPCONFIG3_bit.SEL_INP_SWC_3_0 = 2;
 	ADC_TSC.STEPCONFIG3_bit.FIFO_SELECT = 0;
 
@@ -232,7 +230,7 @@ adc_t *adc_open(uint16_t speed, uint16_t num_channels, uint8_t *channels) {
 	 * use FIFO0
 	 */
 	ADC_TSC.STEPCONFIG4_bit.MODE = 0;
-	ADC_TSC.STEPCONFIG4_bit.AVERAGING = ADC_AVERAGING;
+	ADC_TSC.STEPCONFIG4_bit.AVERAGING = step_avg;
 	ADC_TSC.STEPCONFIG4_bit.SEL_INP_SWC_3_0 = 3;
 	ADC_TSC.STEPCONFIG4_bit.FIFO_SELECT = 0;
 
@@ -244,7 +242,7 @@ adc_t *adc_open(uint16_t speed, uint16_t num_channels, uint8_t *channels) {
 	 * use FIFO0
 	 */
 	ADC_TSC.STEPCONFIG5_bit.MODE = 0;
-	ADC_TSC.STEPCONFIG5_bit.AVERAGING = ADC_AVERAGING;
+	ADC_TSC.STEPCONFIG5_bit.AVERAGING = step_avg;
 	ADC_TSC.STEPCONFIG5_bit.SEL_INP_SWC_3_0 = 4;
 	ADC_TSC.STEPCONFIG5_bit.FIFO_SELECT = 0;
 
@@ -256,7 +254,7 @@ adc_t *adc_open(uint16_t speed, uint16_t num_channels, uint8_t *channels) {
 	 * use FIFO0
 	 */
 	ADC_TSC.STEPCONFIG6_bit.MODE = 0;
-	ADC_TSC.STEPCONFIG6_bit.AVERAGING = ADC_AVERAGING;
+	ADC_TSC.STEPCONFIG6_bit.AVERAGING = step_avg;
 	ADC_TSC.STEPCONFIG6_bit.SEL_INP_SWC_3_0 = 5;
 	ADC_TSC.STEPCONFIG6_bit.FIFO_SELECT = 0;
 
@@ -268,7 +266,7 @@ adc_t *adc_open(uint16_t speed, uint16_t num_channels, uint8_t *channels) {
 	 * use FIFO0
 	 */
 	ADC_TSC.STEPCONFIG7_bit.MODE = 0;
-	ADC_TSC.STEPCONFIG7_bit.AVERAGING = ADC_AVERAGING;
+	ADC_TSC.STEPCONFIG7_bit.AVERAGING = step_avg;
 	ADC_TSC.STEPCONFIG7_bit.SEL_INP_SWC_3_0 = 6;
 	ADC_TSC.STEPCONFIG7_bit.FIFO_SELECT = 0;
 
@@ -280,7 +278,7 @@ adc_t *adc_open(uint16_t speed, uint16_t num_channels, uint8_t *channels) {
 	 * use FIFO0
 	 */
 	ADC_TSC.STEPCONFIG8_bit.MODE = 0;
-	ADC_TSC.STEPCONFIG8_bit.AVERAGING = ADC_AVERAGING;
+	ADC_TSC.STEPCONFIG8_bit.AVERAGING = step_avg;
 	ADC_TSC.STEPCONFIG8_bit.SEL_INP_SWC_3_0 = 7;
 	ADC_TSC.STEPCONFIG8_bit.FIFO_SELECT = 0;
 
@@ -442,7 +440,7 @@ void main(void) {
 		if (len >= sizeof(command_t) && cmd->magic == COMMAND_MAGIC) {
 			if (padc == NULL && cmd->command == COMMAND_START) {
 				command_start_t *start = (command_start_t *) recv_buffer;
-				padc = adc_open(start->speed, start->num_channels, start->channels);
+				padc = adc_open(start->clk_div, start->step_avg, start->num_channels, start->channels);
 				max_num = start->max_num;
 				target_delay = start->target_delay;
 				PRU0_CTRL.CYCLE = 0;

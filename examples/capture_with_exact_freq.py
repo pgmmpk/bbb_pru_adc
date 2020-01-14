@@ -20,10 +20,11 @@ import time
 from bbb_pru_adc import capture
 
 
-with capture.capture([1], speed=4, target_delay=66656) as c:    
+with capture.capture([1], clk_div=1, target_delay=66642, auto_install=True) as c:    
     num_values = 0
     start = time.time()
-    for num_dropped, _, values in itertools.islice(c, 0, 1000):
+    for num_dropped, _, values in itertools.islice(c, 0, 100):
+        print(num_dropped, _[0])
         num_values += num_dropped + len(values)
     end = time.time()
 
