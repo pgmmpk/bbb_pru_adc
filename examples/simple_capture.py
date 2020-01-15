@@ -13,7 +13,7 @@ size = 100000
 AIN3_buffer = array.array('f', [0] * size)
 AIN7_buffer = array.array('f', [0] * size)
 
-print('Capturing %s samples will take approximately %s seconds' % (size, size / 16000))
+print('Capturing %s samples will take approximately %s seconds' % (size, size / 7000))
 
 with capture.capture(channels=[3, 5], auto_install=True) as c:
     offset = 0

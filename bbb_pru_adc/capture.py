@@ -7,7 +7,7 @@ import array
 _dll = CDLL(relative('resources/libdriver.so'))
 
 @contextlib.contextmanager
-def capture(channels, auto_install=False, speed=0, max_num=0, target_delay=0):
+def capture(channels, auto_install=False, clk_div=0, step_avg=4, max_num=0, target_delay=0):
     '''
     ADC capture.
 
@@ -18,11 +18,18 @@ def capture(channels, auto_install=False, speed=0, max_num=0, target_delay=0):
             ...
             7 -> AIN8  (seem to be defunct in the hardware?)
 
-        speed - ADC capture speed (actually, clock divider)
+        clk_div - ADC capture clock divider, affects ADC speed
             0 -> highest speed
             1 -> a bit slower
             2 -> even slower
             ...
+
+        step_avg - how many samples to average. More samples produce less jitters.
+            0 -> no averaging (single sample)
+            1 -> average over 2 sampples
+            2 -> average over 4 samples
+            3 -> average over 8 samples
+            4 -> average over 16 samples (smoothest, recommended)
 
         max_num - put a limit on the number of readings per buffer. This makes it
             possible to lower the latency. Default is 0, that disables the limit.
@@ -84,8 +91,10 @@ def capture(channels, auto_install=False, speed=0, max_num=0, target_delay=0):
         raise ValueError('Channel should be from 0 (AIN1) to 7 (AIN8)')
     if len(set(channels)) != num_channels:
         raise ValueError('Do not repeat channels!')
-    if not (0 <= speed <= 0xffff):
-        raise ValueError('Speed must be in 0..0xffff')
+    if not (0 <= clk_div <= 0xffff):
+        raise ValueError('clk_div must be in 0..0xffff')
+    if not (0 <= step_avg <= 4):
+        raise ValueError('step_avg must be in 0..4')
 
     num_records = (512-16-4) // (4 + 2 * num_channels)
     if max_num > 0 and max_num < num_records:
@@ -98,7 +107,8 @@ def capture(channels, auto_install=False, speed=0, max_num=0, target_delay=0):
     with pru(auto_install=auto_install):
         c_channels = c_ubyte*num_channels
         driver = _dll.driver_start(
-            c_uint(speed),
+            c_uint(clk_div),
+            c_uint(step_avg),
             c_uint(num_channels),
             c_channels(*channels),
             c_uint(max_num),

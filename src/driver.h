@@ -10,7 +10,8 @@ typedef struct {
     unsigned char eye[8];
 } driver_t;
 
-extern driver_t *driver_start(unsigned int speed,
+extern driver_t *driver_start(
+   unsigned int clk_div, unsigned int step_avg,
    unsigned int num_channels, unsigned char const *channels,
    unsigned int max_num, unsigned int target_delay);
 

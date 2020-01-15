@@ -12,9 +12,9 @@ if __name__ == '__main__':
     bad = 0
     good = 0
     count = 0
-    with capture([0, 1, 2, 3, 4 ,5 ,6 ,7], auto_install=True, speed=0) as cap:
+    with capture([0, 1, 2, 3, 4, 5, 6, 7], auto_install=True, step_avg=4) as cap:
         start = time.time()
-        for num_dropped, timestamps, values in itertools.islice(cap, 0, 10000):
+        for num_dropped, timestamps, values in itertools.islice(cap, 0, 1000):
             bad += num_dropped
             good += len(timestamps)
             count += 1

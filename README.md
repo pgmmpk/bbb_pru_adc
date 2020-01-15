@@ -9,6 +9,7 @@ dynamic library, if needed.
 
 Features:
 - configurable capture speed. Highest speed is around 15KHz.
+- configurable number of samples to average over (important to get less noise)
 - configurable set of AIN pins to capture. From just one AIN channel and up to 8 AIN channels
 - reports dropped readings (when userspace client is not fast enough to process incoming
   buffers data is dropped to avoid buffer overflow)
@@ -20,7 +21,7 @@ Features:
 1. Hardware: BeagleBone (Black), With remoteproc (not UIO) enabled in `/boot/uEnv.txt`
 2. OS: Debian GNU/Linux 10 (buster), see https://rcn-ee.com/rootfs/bb.org/testing/2019-12-10/buster-iot/ Or Debian GNU/Linux 9.8 (the latter may need to be re-configured to use remoteproc)
 3. Python 3.5 or better
-4. Root access rights (needed to install firmware into `/lib/firmware` folder)
+4. Root access rights (needed to install firmware into `/lib/firmware` folder and access sysfs)
 
 Please note that (depending on your environment) you may need root priviledges to run this code.
 
@@ -46,9 +47,9 @@ from bbb_pru_adc.capture import capture
 
 bad = 0
 good = 0
-with capture([0, 1, 2, 3, 4 ,5 ,6 ,7], auto_install=True, speed=1) as cap:
+with capture([0, 1, 2, 3, 4 ,5 ,6 ,7], auto_install=True, clk_div=1) as cap:
     start = time.time()
-    for num_dropped, timestamps, values in itertools.islice(cap, 0, 10000):
+    for num_dropped, timestamps, values in itertools.islice(cap, 0, 1000):
         bad += num_dropped
         good += len(timestamps)
 
@@ -112,7 +113,7 @@ applications, this parameter should not be used.
 ```python
 from bbb_pru_adc.capture import capture
 
-with capture(speed=0, channels=[3, 5, 7], auto_install=False) as cap:
+with capture(clk_div=0, step_avg=3, channels=[3, 5, 7], auto_install=False) as cap:
     for num_dropped, timestamps, values in cap:
         # do something with this information
 ```
@@ -126,8 +127,14 @@ the pieces of our buffer.
 
 Capture parameters:
 
-`speed` - ADC capture speed as a clock divider value. Fastest is `speed=0`, capturing at about 15KHz. In many applications 15KHz is just too much data (hard to process), and `speed` can be set to other
-values. For example, setting `speed=9` will capture 10 times slower (at about 1.5KHz).
+`clk_div` - ADC clock divider value. Fastest is `clk_div=0`, capturing at about 15KHz. In many applications 15KHz is just too much data (hard to process), and `clk_div` can be set to other
+values. For example, setting `clk_div=9` will capture 10 times slower (at about 1.5KHz).
+
+`step_avg` - How many capture steps to avegare for one sample. Default value is `4`, meaning
+averaging over 16 steps. It produces the least amount of noise. Setting to values less than 2
+is not recommended, because of the increasing noise in the values. Note that this value affects
+capture speed. Higest capture speed of 15kHz is only possible without averaging. Highest
+capture frequency with the recommended `step_avg` setting of 4 is about 7kHz.
 
 `channels` - which AIN pins (aka channels) to capture. This is a list of 1 to 8 unique values, 
 representing the AIN pins to read. Note that values in the output buffer are layed out in the
